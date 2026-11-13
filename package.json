@@ -1,0 +1,9 @@
+{
+  "name": "second-brain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "혼자 쓰는 세컨드 브레인 웹앱(PWA)",
+  "scripts": {
+    "test": "node --test \"tests/*.test.cjs\""
+  }
+}
