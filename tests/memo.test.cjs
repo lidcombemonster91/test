@@ -580,3 +580,139 @@ test('내보내기·가져오기 버튼도 누르기 쉬운 크기(44px 이상)�
     await browser.close();
   }
 });
+
+// ---- #7 오프라인 + 홈 화면 앱 + 배포 ----
+
+// 서비스 워커가 앱 파일을 모두 저장해 둘 때까지 기다린다.
+async function waitForOfflineReady(page) {
+  const ready = await page.evaluate(() =>
+    Promise.race([
+      navigator.serviceWorker.ready.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 4000)),
+    ])
+  );
+  assert.ok(ready, '서비스 워커가 등록되지 않았다');
+  if (!(await page.evaluate(() => !!navigator.serviceWorker.controller))) {
+    await page.reload(); // 첫 방문에서는 한 번 새로고침해야 서비스 워커가 화면을 맡는다
+  }
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 5000 });
+}
+
+test('인터넷이 없어도 앱이 열리고 메모를 저장·조회할 수 있다', async () => {
+  const { browser, context, page } = await openApp(server.url);
+  try {
+    await waitForOfflineReady(page);
+    await context.setOffline(true);
+
+    await page.reload();
+    await page.getByPlaceholder('무슨 생각이 나세요?').waitFor({ timeout: 5000 });
+    await saveMemo(page, '비행기 안에서 쓴 메모');
+
+    await page.reload();
+    await page.getByTestId('item').first().waitFor({ timeout: 5000 });
+    assert.deepStrictEqual(await page.getByTestId('item').allInnerTexts(), ['비행기 안에서 쓴 메모']);
+
+    await page.getByLabel('검색').fill('비행기');
+    assert.strictEqual(await page.getByTestId('item').count(), 1);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('홈 화면에 추가할 수 있도록 이름·아이콘·전체 화면 설정이 갖춰져 있다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    const href = await page.locator('link[rel="manifest"]').getAttribute('href');
+    assert.ok(href, '매니페스트 연결이 있어야 한다');
+    const manifest = await (await page.request.get(new URL(href, server.url).href)).json();
+    assert.strictEqual(manifest.name, '세컨드 브레인');
+    assert.strictEqual(manifest.display, 'standalone');
+    assert.ok(manifest.short_name && manifest.short_name.length <= 12, manifest.short_name);
+    assert.strictEqual(manifest.lang, 'ko');
+    const sizes = manifest.icons.map((i) => i.sizes);
+    assert.ok(sizes.includes('192x192') && sizes.includes('512x512'), sizes.join());
+    for (const icon of manifest.icons) {
+      const res = await page.request.get(new URL(icon.src, new URL(href, server.url)).href);
+      assert.strictEqual(res.status(), 200, icon.src);
+      assert.strictEqual(res.headers()['content-type'], 'image/png', icon.src);
+    }
+
+    // 아이폰은 별도의 아이콘·설정 태그를 본다
+    const touch = await page.locator('link[rel="apple-touch-icon"]').getAttribute('href');
+    const touchRes = await page.request.get(new URL(touch, server.url).href);
+    assert.strictEqual(touchRes.status(), 200);
+    assert.strictEqual(await page.locator('meta[name="apple-mobile-web-app-capable"]').getAttribute('content'), 'yes');
+    assert.strictEqual(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute('content'), '세컨드 브레인');
+    assert.ok(await page.locator('meta[name="theme-color"]').first().getAttribute('content'));
+  } finally {
+    await browser.close();
+  }
+});
+
+test('아이콘과 설정 파일도 인터넷 없이 불러올 수 있다', async () => {
+  const { browser, context, page } = await openApp(server.url);
+  try {
+    await waitForOfflineReady(page);
+    await context.setOffline(true);
+    for (const file of ['manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png']) {
+      const res = await page.evaluate(async (f) => (await fetch(f)).status, file);
+      assert.strictEqual(res, 200, file);
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('사파리에서 열면 "홈 화면에 추가" 안내와 데이터 유실 주의가 보인다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    const tip = page.locator('#install-tip');
+    await tip.waitFor({ state: 'visible', timeout: 3000 });
+    const text = await tip.innerText();
+    assert.ok(text.includes('홈 화면에 추가'), text);
+    assert.ok(text.includes('공유'), '사파리 공유 버튼 안내가 있어야 한다');
+    assert.ok(text.includes('백업'), '백업 안내가 있어야 한다');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('홈 화면 앱으로 열면 설치 안내가 보이지 않는다', async () => {
+  const browser = await require('playwright').chromium.launch();
+  try {
+    const context = await browser.newContext({ ...require('playwright').devices['iPhone 13'] });
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'standalone', { value: true });
+    });
+    const page = await context.newPage();
+    await page.goto(server.url);
+    await page.getByPlaceholder('무슨 생각이 나세요?').waitFor({ timeout: 3000 });
+    assert.strictEqual(await page.locator('#install-tip').isVisible(), false);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('GitHub Pages처럼 /test/ 하위 주소에서도 오프라인·아이콘이 동작한다', async () => {
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-subpath-'));
+  fs.symlinkSync(path.join(__dirname, '..'), path.join(dir, 'test'));
+  const sub = await startServer(8732, dir);
+  const { browser, context, page } = await openApp(`${sub.url}test/`);
+  try {
+    await waitForOfflineReady(page);
+    await context.setOffline(true);
+    await page.reload();
+    await page.getByPlaceholder('무슨 생각이 나세요?').waitFor({ timeout: 5000 });
+    for (const file of ['manifest.webmanifest', 'icons/icon-192.png']) {
+      const status = await page.evaluate(async (f) => (await fetch(f)).status, file);
+      assert.strictEqual(status, 200, file);
+    }
+    await saveMemo(page, '하위 주소에서 저장');
+  } finally {
+    await browser.close();
+    sub.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

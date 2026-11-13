@@ -5,11 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <title>세컨드 브레인</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#0a60ff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="세컨드 브레인" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main>
       <h1>세컨드 브레인</h1>
+      <aside id="install-tip" hidden>
+        <strong>홈 화면에 추가해서 쓰세요</strong>
+        <p>사파리 아래쪽 <b>공유</b> 버튼 → <b>홈 화면에 추가</b>를 누르면 앱처럼 열려요.</p>
+        <p>오래 안 쓰면 폰이 저장된 내용을 지울 수 있어요. <b>내보내기</b>로 백업을 자주 해 두세요.</p>
+      </aside>
       <section id="backup" aria-label="백업">
         <div class="actions">
           <button type="button" id="export-btn">내보내기</button>

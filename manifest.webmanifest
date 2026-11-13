@@ -1,0 +1,15 @@
+{
+  "name": "세컨드 브레인",
+  "short_name": "세컨드브레인",
+  "description": "메모·링크·사진을 한 곳에 모아 두고 검색하는 나만의 앱",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0a60ff",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

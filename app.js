@@ -388,4 +388,17 @@
     db = opened;
     return refresh();
   });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        // 등록에 실패해도 앱은 평소처럼 쓸 수 있다. (오프라인 기능만 빠진다)
+      });
+    });
+  }
+
+  // 홈 화면 앱으로 열었을 때는 설치 안내가 필요 없다.
+  const standalone =
+    navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  document.getElementById('install-tip').hidden = standalone;
 })();

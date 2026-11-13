@@ -4,9 +4,9 @@ const { chromium, devices } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 
-async function startServer(port) {
+async function startServer(port, cwd = ROOT) {
   const proc = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], {
-    cwd: ROOT,
+    cwd,
     stdio: 'ignore',
   });
   const url = `http://127.0.0.1:${port}/`;

@@ -269,3 +269,20 @@ button.danger {
   font-size: 15px;
   opacity: 0.8;
 }
+
+#install-tip {
+  margin-bottom: 16px;
+  padding: 12px;
+  font-size: 15px;
+  background: var(--card);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+}
+
+#install-tip[hidden] {
+  display: none;
+}
+
+#install-tip p {
+  margin: 4px 0 0;
+}
