@@ -163,3 +163,56 @@ test('삭제를 확인하면 메모가 사라지고 새로고침 후에도 없�
     await browser.close();
   }
 });
+
+// ---- #4 검색 ----
+
+test('검색창에 단어를 입력하면 일치하는 항목만 보인다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '사과 먹기');
+    await saveMemo(page, '바나나 사기');
+    await saveMemo(page, '사과 주스 만들기');
+
+    await page.getByLabel('검색').fill('사과');
+    const items = page.getByTestId('item');
+    await items.filter({ hasText: '바나나' }).waitFor({ state: 'detached', timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['사과 주스 만들기', '사과 먹기']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('일치하는 항목이 없으면 "결과가 없어요"가 보인다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '사과 먹기');
+    const empty = page.getByText('결과가 없어요');
+    assert.strictEqual(await empty.isVisible(), false, '검색 전에는 안내가 없어야 한다');
+
+    await page.getByLabel('검색').fill('수박');
+    await empty.waitFor({ state: 'visible', timeout: 3000 });
+    assert.strictEqual(await page.getByTestId('item').count(), 0);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('검색창을 비우면 전체 목록으로 돌아가고 안내도 사라진다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '사과 먹기');
+    await saveMemo(page, '바나나 사기');
+    const search = page.getByLabel('검색');
+    const items = page.getByTestId('item');
+
+    await search.fill('수박');
+    await page.getByText('결과가 없어요').waitFor({ state: 'visible', timeout: 3000 });
+
+    await search.fill('');
+    await items.nth(1).waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['바나나 사기', '사과 먹기']);
+    assert.strictEqual(await page.getByText('결과가 없어요').isVisible(), false);
+  } finally {
+    await browser.close();
+  }
+});

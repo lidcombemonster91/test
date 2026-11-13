@@ -68,7 +68,7 @@ button {
 }
 
 #list {
-  margin-top: 24px;
+  margin-top: 16px;
   display: grid;
   gap: 12px;
 }
@@ -110,4 +110,26 @@ button.secondary {
 button.danger {
   color: #ffffff;
   background: #d70015;
+}
+
+#search {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 24px;
+  padding: 0 12px;
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+#empty {
+  margin: 16px 0 0;
+  color: var(--fg);
+  opacity: 0.7;
+}
+
+#empty[hidden] {
+  display: none;
 }

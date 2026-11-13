@@ -31,8 +31,20 @@
   let lastTs = 0;
   let openId = null;
 
-  function render(items) {
-    items.sort((a, b) => b.createdAt - a.createdAt);
+  const searchInput = document.getElementById('search');
+  let allItems = [];
+
+  // 검색에 쓰이는 글: 항목 종류가 늘어나도 여기만 고치면 된다.
+  function searchableText(item) {
+    return item.text;
+  }
+
+  function render() {
+    const query = searchInput.value.trim().toLowerCase();
+    const items = allItems
+      .filter((item) => !query || searchableText(item).toLowerCase().includes(query))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    document.getElementById('empty').hidden = !(query && items.length === 0);
     list.replaceChildren(
       ...items.map((item) => {
         const el = document.createElement('div');
@@ -48,8 +60,11 @@
   async function refresh() {
     const items = await run(db, 'readonly', (store) => store.getAll());
     lastTs = Math.max(lastTs, ...items.map((i) => i.createdAt), 0);
-    render(items);
+    allItems = items;
+    render();
   }
+
+  searchInput.addEventListener('input', render);
 
   list.addEventListener('click', async (event) => {
     const el = event.target.closest('[data-testid="item"]');
