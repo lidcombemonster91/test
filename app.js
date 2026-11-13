@@ -36,7 +36,20 @@
 
   // 검색에 쓰이는 글: 항목 종류가 늘어나도 여기만 고치면 된다.
   function searchableText(item) {
-    return item.text;
+    return item.type === 'link' ? `${item.text} ${item.url}` : item.text;
+  }
+
+  // http/https 주소만 허용한다. (javascript: 같은 위험한 주소는 막는다)
+  function normalizeUrl(raw) {
+    const value = raw.trim();
+    if (!value || /\s/.test(value)) return null;
+    const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+    try {
+      const url = new URL(withScheme);
+      return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+    } catch {
+      return null;
+    }
   }
 
   function render() {
@@ -50,8 +63,23 @@
         const el = document.createElement('div');
         el.setAttribute('data-testid', 'item');
         el.dataset.id = item.id;
+        el.dataset.type = item.type;
         el.tabIndex = 0;
-        el.textContent = item.text;
+        if (item.type === 'link') {
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = '링크';
+          const desc = document.createElement('span');
+          desc.textContent = item.text;
+          const anchor = document.createElement('a');
+          anchor.href = item.url;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
+          anchor.textContent = item.url;
+          el.append(badge, desc, anchor);
+        } else {
+          el.textContent = item.text;
+        }
         return el;
       })
     );
@@ -69,8 +97,9 @@
   list.addEventListener('click', async (event) => {
     const el = event.target.closest('[data-testid="item"]');
     if (!el) return;
+    if (event.target.closest('a')) return;
     const item = await run(db, 'readonly', (store) => store.get(el.dataset.id));
-    if (!item) return;
+    if (!item || item.type !== 'memo') return;
     openId = item.id;
     detailInput.value = item.text;
     detail.hidden = false;
@@ -104,6 +133,22 @@
   });
 
   document.getElementById('detail-close').addEventListener('click', closeDetail);
+
+  const linkForm = document.getElementById('link-form');
+  linkForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const urlInput = document.getElementById('link-url');
+    const descInput = document.getElementById('link-desc');
+    const url = normalizeUrl(urlInput.value);
+    if (!url || !db) return;
+    const text = descInput.value.trim();
+    urlInput.value = '';
+    descInput.value = '';
+    lastTs = Math.max(Date.now(), lastTs + 1);
+    const item = { id: crypto.randomUUID(), type: 'link', url, text, createdAt: lastTs };
+    await run(db, 'readwrite', (store) => store.add(item));
+    await refresh();
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

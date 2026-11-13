@@ -216,3 +216,78 @@ test('검색창을 비우면 전체 목록으로 돌아가고 안내도 사라�
     await browser.close();
   }
 });
+
+// ---- #5 링크 저장 ----
+
+async function saveLink(page, url, description) {
+  await page.getByPlaceholder('링크를 붙여넣으세요').fill(url);
+  await page.getByPlaceholder('링크 설명 (선택)').fill(description);
+  await page.getByRole('button', { name: '링크 추가' }).click();
+}
+
+test('링크와 설명을 저장하면 메모와 구분되어 보이고, 누르면 새 탭에서 열린다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '그냥 메모');
+    await saveLink(page, 'https://example.com/article', '나중에 읽을 기사');
+
+    const link = page.locator('[data-type="link"]');
+    await link.waitFor({ timeout: 3000 });
+    assert.ok((await link.innerText()).includes('나중에 읽을 기사'));
+    assert.ok((await link.innerText()).includes('링크'), '링크 표시가 있어야 한다');
+
+    const anchor = link.locator('a');
+    assert.strictEqual(await anchor.getAttribute('href'), 'https://example.com/article');
+    assert.strictEqual(await anchor.getAttribute('target'), '_blank');
+    assert.ok((await anchor.getAttribute('rel')).includes('noopener'));
+
+    // 메모는 링크 표시가 없다
+    const memo = page.locator('[data-type="memo"]');
+    assert.strictEqual(await memo.innerText(), '그냥 메모');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('javascript: 같은 위험한 주소는 저장되지 않는다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await page.getByPlaceholder('링크를 붙여넣으세요').waitFor({ timeout: 3000 });
+    await saveLink(page, 'javascript:alert(1)', '위험');
+    await page.waitForTimeout(300);
+    assert.strictEqual(await page.getByTestId('item').count(), 0);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('링크는 새로고침 후에도 남고, 설명 글로 검색된다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '무관한 메모');
+    await saveLink(page, 'example.org/recipe', '김치찌개 레시피');
+    await page.locator('[data-type="link"]').waitFor({ timeout: 3000 });
+
+    await page.reload();
+    const link = page.locator('[data-type="link"]');
+    await link.waitFor({ timeout: 3000 });
+    // 주소에 https:// 가 없으면 자동으로 붙는다
+    assert.strictEqual(await link.locator('a').getAttribute('href'), 'https://example.org/recipe');
+
+    await page.getByLabel('검색').fill('김치찌개');
+    await page.getByTestId('item').filter({ hasText: '무관한 메모' }).waitFor({ state: 'detached', timeout: 3000 });
+    assert.strictEqual(await page.getByTestId('item').count(), 1);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('링크 추가 버튼도 누르기 쉬운 크기(44px 이상)다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    const box = await page.getByRole('button', { name: '링크 추가' }).boundingBox();
+    assert.ok(box && box.height >= 44 && box.width >= 44, `크기: ${JSON.stringify(box)}`);
+  } finally {
+    await browser.close();
+  }
+});

@@ -14,6 +14,11 @@
         <textarea id="memo-input" rows="3" placeholder="무슨 생각이 나세요?" aria-label="메모 입력"></textarea>
         <button type="submit">저장</button>
       </form>
+      <form id="link-form">
+        <input id="link-url" type="text" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="링크를 붙여넣으세요" aria-label="링크 주소" />
+        <input id="link-desc" type="text" placeholder="링크 설명 (선택)" aria-label="링크 설명" />
+        <button type="submit">링크 추가</button>
+      </form>
       <input id="search" type="search" placeholder="검색" aria-label="검색" autocomplete="off" />
       <p id="empty" hidden>결과가 없어요</p>
       <section id="list" aria-label="저장한 항목"></section>
