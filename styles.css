@@ -244,3 +244,28 @@ button.danger {
   margin: 0;
   text-align: center;
 }
+
+#backup {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--card);
+  border-radius: 12px;
+}
+
+#backup button {
+  margin-top: 0;
+}
+
+#backup-message {
+  margin: 8px 0 0;
+}
+
+#backup-message:empty {
+  display: none;
+}
+
+#backup-status {
+  margin: 8px 0 0;
+  font-size: 15px;
+  opacity: 0.8;
+}

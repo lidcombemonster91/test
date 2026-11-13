@@ -415,3 +415,168 @@ test('사진 추가·사진 닫기 버튼도 누르기 쉬운 크기(44px 이상
     await browser.close();
   }
 });
+
+// ---- #8 내보내기·가져오기·마지막 백업 날짜 ----
+
+const fs = require('node:fs');
+
+async function exportData(page) {
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 10000 }),
+    page.getByRole('button', { name: '내보내기' }).click(),
+  ]);
+  const buffer = fs.readFileSync(await download.path());
+  return { download, buffer, json: JSON.parse(buffer.toString('utf-8')) };
+}
+
+async function fillSampleData(page) {
+  await saveMemo(page, '백업할 메모');
+  await saveLink(page, 'https://example.com/backup', '백업할 링크');
+  await page.locator('[data-type="link"]').waitFor({ timeout: 3000 });
+  await savePhoto(page, await makeImage(page, 600, 400), '백업할 사진');
+  await page.locator('[data-type="photo"] img').waitFor({ timeout: 5000 });
+}
+
+test('내보내기를 누르면 메모·링크·사진이 모두 담긴 파일 하나가 내려받아진다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await fillSampleData(page);
+    const { download, json } = await exportData(page);
+
+    assert.ok(/\.json$/.test(download.suggestedFilename()), download.suggestedFilename());
+    assert.strictEqual(json.items.length, 3);
+    const byType = Object.fromEntries(json.items.map((i) => [i.type, i]));
+    assert.strictEqual(byType.memo.text, '백업할 메모');
+    assert.strictEqual(byType.link.url, 'https://example.com/backup');
+    assert.strictEqual(byType.link.text, '백업할 링크');
+    assert.strictEqual(byType.photo.text, '백업할 사진');
+    // 사진은 파일 안에 이미지 데이터(JPEG)로 들어 있다
+    assert.ok(byType.photo.photo.data.length > 100, '사진 데이터가 있어야 한다');
+    assert.ok(Buffer.from(byType.photo.photo.data, 'base64').subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])));
+  } finally {
+    await browser.close();
+  }
+});
+
+async function importData(page, buffer) {
+  await page.getByLabel('가져오기 파일').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer });
+}
+
+test('새 폰(빈 앱)에서 가져오기를 하면 메모·링크·사진이 그대로 복구된다', async () => {
+  const first = await openApp(server.url);
+  let backup;
+  try {
+    await fillSampleData(first.page);
+    backup = (await exportData(first.page)).buffer;
+  } finally {
+    await first.browser.close();
+  }
+
+  const { browser, page } = await openApp(server.url); // 새 브라우저 = 비어 있는 새 폰
+  try {
+    assert.strictEqual(await page.getByTestId('item').count(), 0);
+    await importData(page, backup);
+
+    await page.locator('[data-type="photo"] img').waitFor({ timeout: 5000 });
+    await page.waitForFunction(() => document.querySelector('[data-type="photo"] img')?.naturalWidth > 0);
+    assert.strictEqual(await page.getByTestId('item').count(), 3);
+    assert.strictEqual(await page.locator('[data-type="memo"]').innerText(), '백업할 메모');
+    const link = page.locator('[data-type="link"]');
+    assert.ok((await link.innerText()).includes('백업할 링크'));
+    assert.strictEqual(await link.locator('a').getAttribute('href'), 'https://example.com/backup');
+    assert.ok((await page.locator('[data-type="photo"]').innerText()).includes('백업할 사진'));
+
+    await page.reload();
+    await page.getByTestId('item').nth(2).waitFor({ timeout: 5000 });
+    assert.strictEqual(await page.getByTestId('item').count(), 3);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('같은 파일을 두 번 가져와도 항목이 중복되지 않는다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await fillSampleData(page);
+    const { buffer } = await exportData(page);
+
+    await importData(page, buffer);
+    await page.getByText('이미 있는 3개는 건너뛰었어요').waitFor({ timeout: 5000 });
+    assert.strictEqual(await page.getByTestId('item').count(), 3);
+
+    await importData(page, buffer);
+    await page.getByText('0개를 가져왔어요').first().waitFor({ timeout: 5000 });
+    assert.strictEqual(await page.getByTestId('item').count(), 3);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('내보내기 파일이 아닌 파일은 안내만 하고 아무것도 바꾸지 않는다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '지켜야 할 메모');
+    await importData(page, Buffer.from('이건 JSON이 아니에요'));
+    await page.getByText('가져올 수 없는 파일이에요').waitFor({ timeout: 3000 });
+    await importData(page, Buffer.from(JSON.stringify({ hello: 'world' })));
+    await page.getByText('가져올 수 없는 파일이에요').waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await page.getByTestId('item').allInnerTexts(), ['지켜야 할 메모']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('가져온 파일 속 위험한 주소와 깨진 항목은 건너뛴다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    const file = {
+      app: 'second-brain',
+      version: 1,
+      items: [
+        { id: 'a', type: 'memo', text: '정상 메모', createdAt: 1000 },
+        { id: 'b', type: 'link', url: 'javascript:alert(1)', text: '위험한 링크', createdAt: 2000 },
+        { id: 'c', type: 'memo', createdAt: 'abc' },
+        { id: 'd', type: 'unknown', text: '모르는 종류', createdAt: 3000 },
+      ],
+    };
+    await importData(page, Buffer.from(JSON.stringify(file)));
+    await page.getByText('1개를 가져왔어요').waitFor({ timeout: 5000 });
+    await page.getByText('읽을 수 없는 3개는 건너뛰었어요').waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await page.getByTestId('item').allInnerTexts(), ['정상 메모']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('마지막 백업 날짜가 화면에 보이고, 내보내면 오늘 날짜로 바뀐다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await page.getByText('아직 백업한 적이 없어요').waitFor({ timeout: 3000 });
+    await saveMemo(page, '백업 날짜 확인');
+    await exportData(page);
+
+    const status = page.locator('#backup-status');
+    await page.getByText('마지막 백업').waitFor({ timeout: 3000 });
+    const today = new Date();
+    const text = await status.innerText();
+    assert.ok(text.includes(`${today.getFullYear()}`), text);
+    assert.ok(!text.includes('아직'), text);
+
+    await page.reload();
+    await page.getByText('마지막 백업').waitFor({ timeout: 3000 });
+  } finally {
+    await browser.close();
+  }
+});
+
+test('내보내기·가져오기 버튼도 누르기 쉬운 크기(44px 이상)다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    for (const name of ['내보내기', '가져오기']) {
+      const box = await page.getByRole('button', { name }).boundingBox();
+      assert.ok(box && box.height >= 44 && box.width >= 44, `${name}: ${JSON.stringify(box)}`);
+    }
+  } finally {
+    await browser.close();
+  }
+});

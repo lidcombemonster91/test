@@ -10,6 +10,15 @@
   <body>
     <main>
       <h1>세컨드 브레인</h1>
+      <section id="backup" aria-label="백업">
+        <div class="actions">
+          <button type="button" id="export-btn">내보내기</button>
+          <button type="button" id="import-btn" class="secondary">가져오기</button>
+          <input id="import-file" type="file" accept="application/json,.json" aria-label="가져오기 파일" hidden />
+        </div>
+        <p id="backup-status"></p>
+        <p id="backup-message" role="status"></p>
+      </section>
       <form id="memo-form">
         <textarea id="memo-input" rows="3" placeholder="무슨 생각이 나세요?" aria-label="메모 입력"></textarea>
         <button type="submit">저장</button>
