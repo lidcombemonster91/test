@@ -80,3 +80,34 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+[data-testid='item'] {
+  cursor: pointer;
+}
+
+#detail {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+#detail[hidden] {
+  display: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.secondary {
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+button.danger {
+  color: #ffffff;
+  background: #d70015;
+}

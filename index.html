@@ -15,6 +15,14 @@
         <button type="submit">저장</button>
       </form>
       <section id="list" aria-label="저장한 항목"></section>
+      <section id="detail" hidden aria-label="메모 보기">
+        <textarea id="detail-input" rows="6" aria-label="메모 수정"></textarea>
+        <div class="actions">
+          <button type="button" id="detail-save">수정 저장</button>
+          <button type="button" id="detail-delete" class="danger">삭제</button>
+          <button type="button" id="detail-close" class="secondary">닫기</button>
+        </div>
+      </section>
     </main>
     <script src="app.js"></script>
   </body>

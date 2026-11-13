@@ -28,11 +28,11 @@ test('메모를 저장하면 목록 맨 위에 보이고, 새로고침해도 남
     await page.getByRole('button', { name: '저장' }).click();
 
     const items = page.getByTestId('item');
-    await items.first().waitFor({ timeout: 3000 });
+    await items.nth(1).waitFor({ timeout: 3000 });
     assert.deepStrictEqual(await items.allInnerTexts(), ['두 번째 메모', '첫 번째 메모']);
 
     await page.reload();
-    await items.first().waitFor({ timeout: 3000 });
+    await items.nth(1).waitFor({ timeout: 3000 });
     assert.deepStrictEqual(await items.allInnerTexts(), ['두 번째 메모', '첫 번째 메모']);
 
     // 저장 후 입력칸은 비워진다
@@ -76,6 +76,89 @@ test('어두운 모드에서는 배경이 어둡고 글자가 밝다', async () 
       return [lum(s.backgroundColor), lum(s.color)];
     });
     assert.ok(bg < 80 && fg > 150, `배경 밝기 ${bg}, 글자 밝기 ${fg}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+// ---- #3 메모 수정·삭제 ----
+
+async function saveMemo(page, text) {
+  await page.getByPlaceholder('무슨 생각이 나세요?').fill(text);
+  await page.getByRole('button', { name: '저장' }).click();
+  await page.getByTestId('item').filter({ hasText: text }).first().waitFor({ timeout: 3000 });
+}
+
+test('메모를 누르면 전체 내용이 수정 화면에 보인다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '긴 메모\n두 번째 줄');
+    await page.getByTestId('item').first().click();
+    const editor = page.getByLabel('메모 수정');
+    await editor.waitFor({ timeout: 3000 });
+    assert.strictEqual(await editor.inputValue(), '긴 메모\n두 번째 줄');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('메모를 고쳐서 저장하면 목록과 새로고침 후에도 바뀐 내용이 보인다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '오타가 있는 메모');
+    await page.getByTestId('item').first().click();
+    await page.getByLabel('메모 수정').fill('고친 메모');
+    await page.getByRole('button', { name: '수정 저장' }).click();
+
+    const items = page.getByTestId('item');
+    await items.filter({ hasText: '고친 메모' }).waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['고친 메모']);
+
+    await page.reload();
+    await items.first().waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['고친 메모']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('삭제를 누르면 확인창이 뜨고, 취소하면 그대로 남는다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '지울까 말까');
+    const messages = [];
+    page.once('dialog', async (dialog) => {
+      messages.push(dialog.message());
+      await dialog.dismiss();
+    });
+    await page.getByTestId('item').first().click();
+    await page.getByRole('button', { name: '삭제' }).click();
+    await page.waitForTimeout(300);
+
+    assert.strictEqual(messages.length, 1, '확인창이 한 번 떠야 한다');
+    assert.ok(messages[0].includes('삭제'), `확인창 문구: ${messages[0]}`);
+    assert.deepStrictEqual(await page.getByTestId('item').allInnerTexts(), ['지울까 말까']);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('삭제를 확인하면 메모가 사라지고 새로고침 후에도 없다', async () => {
+  const { browser, page } = await openApp(server.url);
+  try {
+    await saveMemo(page, '남길 메모');
+    await saveMemo(page, '지울 메모');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByTestId('item').filter({ hasText: '지울 메모' }).click();
+    await page.getByRole('button', { name: '삭제' }).click();
+
+    const items = page.getByTestId('item');
+    await items.filter({ hasText: '지울 메모' }).waitFor({ state: 'detached', timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['남길 메모']);
+
+    await page.reload();
+    await items.first().waitFor({ timeout: 3000 });
+    assert.deepStrictEqual(await items.allInnerTexts(), ['남길 메모']);
   } finally {
     await browser.close();
   }
