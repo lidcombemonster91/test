@@ -33,10 +33,11 @@
 
   const searchInput = document.getElementById('search');
   let allItems = [];
+  let thumbUrls = [];
 
   // 검색에 쓰이는 글: 항목 종류가 늘어나도 여기만 고치면 된다.
   function searchableText(item) {
-    return item.type === 'link' ? `${item.text} ${item.url}` : item.text;
+    return item.type === 'link' ? `${item.text} ${item.url}` : item.text || '';
   }
 
   // http/https 주소만 허용한다. (javascript: 같은 위험한 주소는 막는다)
@@ -58,6 +59,8 @@
       .filter((item) => !query || searchableText(item).toLowerCase().includes(query))
       .sort((a, b) => b.createdAt - a.createdAt);
     document.getElementById('empty').hidden = !(query && items.length === 0);
+    thumbUrls.forEach((url) => URL.revokeObjectURL(url));
+    thumbUrls = [];
     list.replaceChildren(
       ...items.map((item) => {
         const el = document.createElement('div');
@@ -77,6 +80,18 @@
           anchor.rel = 'noopener noreferrer';
           anchor.textContent = item.url;
           el.append(badge, desc, anchor);
+        } else if (item.type === 'photo') {
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = '사진';
+          const desc = document.createElement('span');
+          desc.textContent = item.text;
+          const img = document.createElement('img');
+          const url = URL.createObjectURL(item.blob);
+          thumbUrls.push(url);
+          img.src = url;
+          img.alt = item.text || '저장한 사진';
+          el.append(badge, desc, img);
         } else {
           el.textContent = item.text;
         }
@@ -94,11 +109,35 @@
 
   searchInput.addEventListener('input', render);
 
+  const viewer = document.getElementById('viewer');
+  const viewerImg = document.getElementById('viewer-img');
+  let viewerUrl = null;
+
+  function openViewer(item) {
+    if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    viewerUrl = URL.createObjectURL(item.blob);
+    viewerImg.src = viewerUrl;
+    viewerImg.alt = item.text || '저장한 사진';
+    document.getElementById('viewer-caption').textContent = item.text;
+    viewer.hidden = false;
+  }
+
+  document.getElementById('viewer-close').addEventListener('click', () => {
+    viewer.hidden = true;
+    viewerImg.removeAttribute('src');
+    if (viewerUrl) URL.revokeObjectURL(viewerUrl);
+    viewerUrl = null;
+  });
+
   list.addEventListener('click', async (event) => {
     const el = event.target.closest('[data-testid="item"]');
     if (!el) return;
     if (event.target.closest('a')) return;
     const item = await run(db, 'readonly', (store) => store.get(el.dataset.id));
+    if (item && item.type === 'photo') {
+      openViewer(item);
+      return;
+    }
     if (!item || item.type !== 'memo') return;
     openId = item.id;
     detailInput.value = item.text;
@@ -146,6 +185,45 @@
     descInput.value = '';
     lastTs = Math.max(Date.now(), lastTs + 1);
     const item = { id: crypto.randomUUID(), type: 'link', url, text, createdAt: lastTs };
+    await run(db, 'readwrite', (store) => store.add(item));
+    await refresh();
+  });
+
+  const MAX_SIDE = 1600;
+
+  // 큰 사진은 저장이 느려지지 않도록 줄인다. 읽을 수 없는 파일은 원본 그대로 저장한다.
+  async function shrinkPhoto(file) {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+      return blob || file;
+    } catch {
+      return file;
+    }
+  }
+
+  const photoForm = document.getElementById('photo-form');
+  photoForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const fileInput = document.getElementById('photo-file');
+    const descInput = document.getElementById('photo-desc');
+    const file = fileInput.files[0];
+    if (!file || !db) return;
+    const text = descInput.value.trim();
+    fileInput.value = '';
+    descInput.value = '';
+    lastTs = Math.max(Date.now(), lastTs + 1);
+    const blob = await shrinkPhoto(file);
+    const item = { id: crypto.randomUUID(), type: 'photo', text, blob, createdAt: lastTs };
     await run(db, 'readwrite', (store) => store.add(item));
     await refresh();
   });
